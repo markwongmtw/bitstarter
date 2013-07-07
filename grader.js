@@ -21,11 +21,29 @@ References:
    - https://developer.mozilla.org/en-US/docs/JSON#JSON_in_Firefox_2
 */
 
-var fs = require('fs');
+var fs      = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
-var HTMLFILE_DEFAULT = "index.html";
+var rest    = require('restler');
+var util    = require('util');
+
+var HTMLFILE_DEFAULT   = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var URL_DEFAULT        = "http://www.notgoogle.com";
+
+var url_result = false;
+
+
+var assertUrlExists = function(url) {
+    rest.get(url).on('complete', function(result) {
+        if (result instanceof Error) {
+            console.log('Error: ' + result.message);
+            process.exit(1); // http://nodejs.org/api/process.html#process_process_exit_code
+        } else {
+            url_result = result.message;
+        }
+    });
+};
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -40,8 +58,24 @@ var cheerioHtmlFile = function(htmlfile) {
     return cheerio.load(fs.readFileSync(htmlfile));
 };
 
+var cheerioUrl = function(url) {
+    return cheerio.load(url_result);
+};
+
+
 var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
+};
+
+var checkUrl = function(url, checksfile) {
+    $ = cheerioUrl(url);
+    var checks = loadChecks(checksfile).sort();
+    var out = {};
+    for(var ii in checks) {
+        var present = $(checks[ii]).length > 0;
+        out[checks[ii]] = present;
+    }
+    return out;
 };
 
 var checkHtmlFile = function(htmlfile, checksfile) {
@@ -64,9 +98,17 @@ var clone = function(fn) {
 if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-f, --file <html_file>', 'Path to html file', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-u, --url <url>', 'URL to check', clone(assertUrlExists), URL_DEFAULT)
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
+
+    var checkJson = false;
+    if (program.url == URL_DEFAULT) {
+        checkJson = checkHtmlFile(program.file, program.checks);
+    } else {
+        checkJson = checkUrl(program.url, program.checks);
+    }
+ 
     var outJson = JSON.stringify(checkJson, null, 4);
     console.log(outJson);
 } else {
